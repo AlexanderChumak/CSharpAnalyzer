@@ -1,4 +1,5 @@
 using System;
+using System.Reflection;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
@@ -31,7 +32,6 @@ namespace RoslinAnalyzer
             // TODO: Consider registering other actions that act on syntax instead of or in addition to symbols
             //context.RegisterSymbolAction(AnalyzeSymbol, SymbolKind.NamedType);
 
-
             context.RegisterSyntaxNodeAction(
               AnalyzeNode, SyntaxKind.ReturnStatement);
         }
@@ -42,18 +42,33 @@ namespace RoslinAnalyzer
               context.Node as ReturnStatementSyntax;
             if (returnStatement == null) return;
 
-            //if(returnStatement.Expression is LiteralExpressionSyntax)
             var md = returnStatement.AncestorsAndSelf().OfType<MethodDeclarationSyntax>().FirstOrDefault();
-            if (md == null)
-                return;
+            if (md == null) return;
 
-            var returnType = md.ReturnType;
-            var returnTypeStr = (returnType as INamedTypeSymbol).GetFullTypeString();
+            var rt = context.SemanticModel.GetDeclaredSymbol(md).ReturnType.ToMetadataName();
+
+            Type returnTypeType = Type.GetType(rt);
+            if (returnTypeType == null) return;
+            if (!IsTypeIEnumerable(returnTypeType)) return;
+
+            var isReturnNullValue = false;
+
+            isReturnNullValue = (returnStatement.Expression as LiteralExpressionSyntax)?.Kind() == SyntaxKind.NullLiteralExpression;
+
+            //if(!isReturnNullValue)
+            //{
+            //    var identifierName = returnStatement.Expression as IdentifierNameSyntax;
+            //}
+
+            if (isReturnNullValue)
+            {
+                var methodName = md.Identifier;
+                var diagnostic = Diagnostic.Create(Rule, returnStatement.GetLocation(), methodName);
+
+                context.ReportDiagnostic(diagnostic); 
+            }
+
             
-            var methodName = md.Identifier;
-            var diagnostic = Diagnostic.Create(Rule, returnStatement.GetLocation(), methodName);
-
-            context.ReportDiagnostic(diagnostic);
 
             //returnStatement.
             //var memberSymbol = context.SemanticModel.
@@ -72,30 +87,48 @@ namespace RoslinAnalyzer
             //if (regex == null) return;
 
         }
-
-
+        
 
         public IEnumerable<String> Foo()
         {
+            IEnumerable<String> o = null;
             var test = @"";
             if (test == null)
                 return new String[1] { "" };
+            else
+                return o;
             return null;
         }
 
-        private static void AnalyzeSymbol(SymbolAnalysisContext context)
+        public static Boolean IsTypeIEnumerable(Type type)
         {
-            // TODO: Replace the following code with your own analysis, generating Diagnostic objects for any issues you find
-            var namedTypeSymbol = (INamedTypeSymbol)context.Symbol;
+            if (type.IsArray)
+                return true;
 
-            // Find just those named type symbols with names containing lowercase letters.
-            if (namedTypeSymbol.Name.ToCharArray().Any(char.IsLower))
-            {
-                // For all such symbols, produce a diagnostic.
-                var diagnostic = Diagnostic.Create(Rule, namedTypeSymbol.Locations[0], namedTypeSymbol.Name);
+            if (!type.GetTypeInfo().IsGenericType)
+                return false;
 
-                context.ReportDiagnostic(diagnostic);
-            }
+            if (type.GetTypeInfo().GetGenericTypeDefinition() == typeof(IEnumerable<>))
+                return true;
+
+            return type.GetTypeInfo().ImplementedInterfaces.Any(
+            i => i.GetTypeInfo().IsGenericType &&
+            i.GetGenericTypeDefinition() == typeof(IEnumerable<>));
         }
+
+        //private static void AnalyzeSymbol(SymbolAnalysisContext context)
+        //{
+        //    // TODO: Replace the following code with your own analysis, generating Diagnostic objects for any issues you find
+        //    var namedTypeSymbol = (INamedTypeSymbol)context.Symbol;
+
+        //    // Find just those named type symbols with names containing lowercase letters.
+        //    if (namedTypeSymbol.Name.ToCharArray().Any(char.IsLower))
+        //    {
+        //        // For all such symbols, produce a diagnostic.
+        //        var diagnostic = Diagnostic.Create(Rule, namedTypeSymbol.Locations[0], namedTypeSymbol.Name);
+
+        //        context.ReportDiagnostic(diagnostic);
+        //    }
+        //}
     }
 }

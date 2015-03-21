@@ -1,4 +1,6 @@
 src/packages/
+RoslinAnalyzer/packages/
 Build/
 obj/
 bin/
+.vs
